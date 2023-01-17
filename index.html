@@ -92,6 +92,11 @@
 			let moveLeft = false;
 			let moveRight = false;
 			let canJump = false;
+			let stepping = false;
+
+			let speedSettings = {};
+			let running = false;
+			let brakeRate = 10;
 
 			let prevTime = performance.now();
 			const velocity = new THREE.Vector3();
@@ -429,7 +434,38 @@
 
 				const onKeyDown = function ( event ) {
 
+					console.log('event', event);
+					// console.log('speedSettings: ', speedSettings);
+					running = event.shiftKey;
+
+					/* Very jerky, not sure I like it
+					var velocityAmt = 60;
+					if (!stepping) {
+						stepping = true;
+						setTimeout(function(){
+							velocity.y += velocityAmt;
+							setTimeout(function(){
+								velocity.y -= velocityAmt/2;
+								//stepping = false;
+								setTimeout(function(){
+									velocity.y -= velocityAmt/2;
+									stepping = false;
+								},350);
+							},250);
+						},100);
+					}
+					*/
+					let isHidden;
+					
 					switch ( event.keyCode ) {
+
+						case 27:
+							console.log('Escape key pressed');
+							console.log(gui);
+							isHidden = document.getElementsByClassName('dg main a')[0].style.display;
+							console.log('is hidden: ' + isHidden);
+							isHidden == 'none' ? gui.show() : gui.hide();
+							break;
 
 						case 38: // up
 						case 87: // w
@@ -461,7 +497,8 @@
 				};
 
 				const onKeyUp = function ( event ) {
-
+					running = event.shiftKey;
+					stepping = false;
 					switch ( event.keyCode ) {
 
 						case 38: // up
@@ -556,6 +593,37 @@
 				folderWater.add( waterUniforms.waterColor.value, 'g', 0.0, 1, 0.01 ).name( 'g' );
 				folderWater.add( waterUniforms.waterColor.value, 'b', 0.0, 1, 0.01 ).name( 'b' );
 
+				speedSettings = {
+					running: {value:90, id:'iRun'},
+					walking: {value:70, id:'iWalk'},
+				};
+				
+				// If we wanted to preserve defaults, uncomment and/or move into above
+				// speedSettings.default = {use:false,value: 10};
+
+				const folderSpeed = gui.addFolder( 'Speed Settings' );
+				// folderSpeed.add(speedSettings.default, 'use').name('Use Fixed Speed');
+				folderSpeed.add( speedSettings.walking,'value', 0,100,1).name('Walk Speed');
+				folderSpeed.add( speedSettings.running,'value', 0,105,1).name('Run Speed');
+
+				folderSpeed.open();
+
+				const runController = folderSpeed.__controllers.find(element => element.object.id =='iRun');
+				const walkController = folderSpeed.__controllers.find(element => element.object.id =='iWalk');
+
+				runController.onChange(function (e){
+					if (e < walkController.object.value) {
+						runController.name('Creep Speed');
+					} else {
+						runController.name('Run Speed');
+					}
+				})
+				// button test
+				const obj = { 'Reset Defaults':function(){ 
+					runController.setValue(runController.initialValue);
+					walkController.setValue(walkController.initialValue);
+				}};
+				folderSpeed.add(obj,'Reset Defaults');
 
 				// WINDOW RESIZE
 
@@ -584,14 +652,49 @@
 
 					const delta = ( time - prevTime ) / 1000;
 
-					velocity.x -= velocity.x * 10.0 * delta;
-					velocity.z -= velocity.z * 10.0 * delta;
+					//velocity.x -= velocity.x * 10.0 * delta;
+					//velocity.z -= velocity.z * 10.0 * delta;
 
+					// console.log(`running ${running}, brakeRate: ${brakeRate}`);
+					
+					// TODO Make the run (15) and walk (40) dynamic
+					
+					// console.log('speed defaults: ' , speedSettings.default);
+
+					// if (speedSettings.default.use) {
+					// 	brakeRate = speedSettings.default.value;
+					// } else {
+						
+						const invertRun = (100 - speedSettings.running.value);// * -1;
+						const invertWalk = (100 - speedSettings.walking.value);// * -1;
+
+						// brakeRate = running ? speedSettings.running.value : speedSettings.walking.value;
+						brakeRate = running ? invertRun : invertWalk;
+						// console.log(`run entry: ${speedSettings.running.value} and inverse is ${invertRun}`);
+
+					// }
+
+					// brakeRate = running ? 15 : 40;
+					//console.log('settings running ',speedSettings.running);
+					//console.log('settings walking ',speedSettings.walking);
+					console.log( (velocity.x * 10.0 * delta) + ' : ' + (velocity.x * brakeRate * delta) );
+					// velocity.x -= velocity.x * 10.0 * delta;
+					// velocity.z -= velocity.z * 10.0 * delta;
+
+					velocity.x -= velocity.x * brakeRate * delta;
+					velocity.z -= velocity.z * brakeRate * delta;
+					
+					// console.log('breakRate: ' + breakRate);
+					
 					velocity.y = Math.max(-300, velocity.y - 9.8 * 100.0 * delta); // 100.0 = mass
+
+					// console.log('velocity.y: ' + velocity.y);
+					// console.log('moveForward: ' + Number( moveForward ) + ', moveBackward: ' + Number( moveBackward ));
 
 					direction.z = Number( moveForward ) - Number( moveBackward );
 					direction.x = Number( moveRight ) - Number( moveLeft );
 					direction.normalize(); // this ensures consistent movements in all directions
+					// console.log('direction.z: ' + direction.z + ', direction.x: ' + direction.x);
 
 					collision_up.ray.origin.copy( controls.getObject().position );
 					const intersections_above = collision_up.intersectObjects( objects );
@@ -669,67 +772,67 @@
 			}
 
 			function setupDragDrop() {
-	      var holder = document.getElementById('holder');
-	      holder.ondragover = function() {
-	        this.className = 'hover';
-	        return false;
-	      };
+				var holder = document.getElementById('holder');
+				holder.ondragover = function() {
+					this.className = 'hover';
+					return false;
+				};
 
-	      holder.ondragend = function() {
-	        this.className = '';
-	        return false;
-	      };
-
-	      holder.ondrop = function(e) {
-
-					const onProgress = function ( xhr ) {
-
-						if ( xhr.lengthComputable ) {
-
-							const percentComplete = xhr.loaded / xhr.total * 100;
-							console.log( Math.round( percentComplete, 2 ) + '% downloaded' );
-
-						}
-
-					};
-
-					const onError = function () { };
-
-					console.log('uploading obj')
+				holder.ondragend = function() {
 					this.className = '';
-		      e.preventDefault();
+					return false;
+				};
 
-		      let file = e.dataTransfer.files[0];
-		      let reader = new FileReader();
-		      reader.onload = function(event) {
+				holder.ondrop = function(e) {
 
-						let selectedObject = scene.getObjectByName('Townscape');
-    				scene.remove( selectedObject );
-						objects.splice( 0, objects.length )
-						camera.position.y = 200;
+						const onProgress = function ( xhr ) {
 
-						var objstring = event.target.result // This is your obj file
-						console.log('ob')
-						const manager = new THREE.LoadingManager();
-						manager.addHandler( /\.dds$/i, new DDSLoader() );
+							if ( xhr.lengthComputable ) {
 
-						new MTLLoader( manager )
-							.setPath( './3d/' )
-							.load( 'Town.mtl', function ( materials ) {
+								const percentComplete = xhr.loaded / xhr.total * 100;
+								console.log( Math.round( percentComplete, 2 ) + '% downloaded' );
 
-								materials.preload();
+							}
 
-								var loader = new OBJLoader();
-								var obj3D = loader.parse(objstring);
-								console.log(obj3D)
-								scene.add(parseTownscape(obj3D, materials))
+						};
 
-						} );
-		      };
-		      reader.readAsText(file);
-		      return false;
-			   }
-    	}
+						const onError = function () { };
+
+						console.log('uploading obj')
+						this.className = '';
+				e.preventDefault();
+
+				let file = e.dataTransfer.files[0];
+				let reader = new FileReader();
+				reader.onload = function(event) {
+
+							let selectedObject = scene.getObjectByName('Townscape');
+						scene.remove( selectedObject );
+							objects.splice( 0, objects.length )
+							camera.position.y = 200;
+
+							var objstring = event.target.result // This is your obj file
+							console.log('ob')
+							const manager = new THREE.LoadingManager();
+							manager.addHandler( /\.dds$/i, new DDSLoader() );
+
+							new MTLLoader( manager )
+								.setPath( './3d/' )
+								.load( 'Town.mtl', function ( materials ) {
+
+									materials.preload();
+
+									var loader = new OBJLoader();
+									var obj3D = loader.parse(objstring);
+									console.log(obj3D)
+									scene.add(parseTownscape(obj3D, materials))
+
+							} );
+				};
+				reader.readAsText(file);
+				return false;
+				}
+			}
 
 			setupDragDrop()
 
